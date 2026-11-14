@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beatmaker</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6b6b70; --line: #e3e1dc;
+    --accent: #5b4bdb; --accent-ink: #ffffff;
+    --kick: #e0533d; --snare: #e8a33a; --hat: #3aa3a0; --bass: #5b4bdb; --chords: #9a6bd6; --melody: #2f86d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141416; --panel: #1d1d21; --ink: #ececf0; --muted: #9a9aa3; --line: #2e2e34;
+      --accent: #8b7dff; --accent-ink: #141416;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #141416; --panel: #1d1d21; --ink: #ececf0; --muted: #9a9aa3; --line: #2e2e34;
+    --accent: #8b7dff; --accent-ink: #141416;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  main { max-width: 920px; margin: 0 auto; padding: 28px 16px 48px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { color: var(--muted); margin: 0 0 22px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 16px; }
+  .genres { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+  .genres button { padding: 12px 6px; border-radius: 10px; border: 1px solid var(--line); background: transparent;
+                   color: var(--ink); font: inherit; cursor: pointer; }
+  .genres button b { display: block; font-size: 15px; }
+  .genres button span { font-size: 12px; color: var(--muted); }
+  .genres button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  .check { flex-direction: row; align-items: center; gap: 8px; margin-top: 12px; color: var(--ink); }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .btn { font: inherit; border-radius: 10px; padding: 10px 16px; cursor: pointer; border: 1px solid var(--line);
+         background: transparent; color: var(--ink); }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .info { font-size: 14px; }
+  .info .chords { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .info .meta { color: var(--muted); }
+  canvas { width: 100%; height: 240px; display: block; border-radius: 10px; background: var(--bg); }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+  .status { font-size: 13px; color: var(--muted); min-height: 20px; margin-top: 10px; }
+  @media (max-width: 640px) {
+    .genres, .fields { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Beatmaker</h1>
+  <p class="sub">장르를 고르고 <b>비트 만들기</b>를 누르세요. 설치 없이 브라우저에서 바로 만들고, 듣고, 저장합니다.</p>
+
+  <section class="panel">
+    <div class="genres" id="genres"></div>
+    <div class="fields">
+      <label>BPM <input id="bpm" type="number" min="40" max="220"></label>
+      <label>마디 수 <input id="bars" type="number" min="1" max="64" value="8"></label>
+      <label>키 (마이너)
+        <select id="key"></select>
+      </label>
+      <label>Seed <input id="seed" type="number" min="1" placeholder="비우면 무작위"></label>
+    </div>
+    <label class="check"><input id="melody" type="checkbox" checked> 멜로디 넣기</label>
+    <div class="actions">
+      <button class="btn primary" id="generate">비트 만들기</button>
+      <button class="btn" id="play" disabled>▶ 재생</button>
+      <button class="btn" id="wav" disabled>WAV 저장</button>
+      <button class="btn" id="mid" disabled>MIDI 저장</button>
+    </div>
+    <div class="status" id="status"></div>
+  </section>
+
+  <section class="panel" id="result" hidden>
+    <div class="info" id="info"></div>
+    <canvas id="roll" style="margin-top:12px"></canvas>
+    <div class="legend">
+      <span><i style="background:var(--kick)"></i>킥</span>
+      <span><i style="background:var(--snare)"></i>스네어·클랩</span>
+      <span><i style="background:var(--hat)"></i>하이햇</span>
+      <span><i style="background:var(--bass)"></i>베이스</span>
+      <span><i style="background:var(--chords)"></i>코드</span>
+      <span><i style="background:var(--melody)"></i>멜로디</span>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ============================================================ 음악 이론 */
+const NOTE_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const CHORD_TYPES = {
+  min: [0, 3, 7], maj: [0, 4, 7], m7: [0, 3, 7, 10], maj7: [0, 4, 7, 11],
+  "7": [0, 4, 7, 10], m9: [0, 3, 7, 10, 14], maj9: [0, 4, 7, 11, 14],
+};
+const MINOR_PENTATONIC = [0, 3, 5, 7, 10];
+const chordLabel = (key, off, t) => NOTE_NAMES[(key + off) % 12] + (t === "maj" ? "" : t === "min" ? "m" : t);
+function chordNotes(key, off, t, base = 48) {
+  let root = base + (key + off) % 12;
+  if (root > base + 7) root -= 12;
+  return CHORD_TYPES[t].map(i => root + i);
+}
+const bassNote = (key, off, base = 36) => base + (key + off) % 12;
+function scaleNotes(key, low = 64, high = 86) {
+  const out = [];
+  for (let n = low; n <= high; n++) if (MINOR_PENTATONIC.includes(((n - key) % 12 + 12) % 12)) out.push(n);
+  return out;
+}
+const midiToFreq = n => 440 * Math.pow(2, (n - 69) / 12);
+
+/* ============================================================ 난수 (seed가 같으면 같은 결과) */
+function makeRng(seed) {
+  let a = seed >>> 0;
+  const random = () => {
+    a = (a + 0x6D2B79F5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return {
+    random,
+    uniform: (lo, hi) => lo + (hi - lo) * random(),
+    randint: (lo, hi) => lo + Math.floor(random() * (hi - lo + 1)),
+    choice: arr => arr[Math.floor(random() * arr.length)],
+  };
+}
+
+/* ============================================================ 장르 규칙 */
+const KICK = 36, SNARE = 38, CLAP = 39, HAT = 42, OPEN_HAT = 46;
+// 패턴: 16칸 = 한 마디의 16분음표. x = 강하게, o = 약하게(고스트), . = 쉼
+const GENRES = {
+  lofi: {
+    label: "Lo-fi", desc: "느긋한 스윙", bpm: 82, key: "A", swing: 0.28, humanize: 0.012,
+    kick: ["x.........x.x...", "x......x..x.....", "x.......x.x....."],
+    snare: ["....x.......x...", "....x.......x..o"],
+    hat: ["x.x.x.x.x.x.x.x.", "x.xox.x.x.xox.x."],
+    open_hat: ["................"],
+    progressions: [
+      [[0, "m9"], [5, "m7"], [10, "7"], [3, "maj7"]],
+      [[5, "m9"], [10, "7"], [3, "maj9"], [8, "maj7"]],
+      [[0, "m7"], [8, "maj7"], [3, "maj7"], [10, "7"]],
+    ],
+    chordStyle: "strum", bassStyle: "follow_kick", melodyDensity: 0.35, melodyGrid: 0.5,
+  },
+  hiphop: {
+    label: "Hip-hop", desc: "붐뱁 그루브", bpm: 90, key: "D", swing: 0.18, humanize: 0.008,
+    kick: ["x.....x...x.....", "x..x......x..x..", "x.x.......x..x.."],
+    snare: ["....x.......x...", "....x.......x.o."],
+    hat: ["x.x.x.x.x.x.x.x.", "x.x.x.xxx.x.x.x."],
+    open_hat: ["..............x.", "................"],
+    progressions: [
+      [[0, "m7"], [8, "maj7"], [5, "m7"], [7, "m7"]],
+      [[0, "m9"], [3, "maj7"], [8, "maj7"], [7, "7"]],
+    ],
+    chordStyle: "hold", bassStyle: "follow_kick", melodyDensity: 0.3, melodyGrid: 0.5,
+  },
+  trap: {
+    label: "Trap", desc: "808과 하이햇 롤", bpm: 140, key: "F", swing: 0, humanize: 0,
+    kick: ["x......x..x.....", "x.....x...x..x..", "x.x.......x....."],
+    snare: ["........x......."],
+    hat: ["xxxxxxxxxxxxxxxx", "x.xxx.xxx.xxx.xx"],
+    open_hat: ["................"],
+    progressions: [
+      [[0, "min"], [8, "maj"], [3, "maj"], [10, "maj"]],
+      [[0, "min"], [1, "maj"], [0, "min"], [7, "min"]],
+      [[0, "min"], [5, "min"], [8, "maj"], [7, "min"]],
+    ],
+    chordStyle: "pad", bassStyle: "808", melodyDensity: 0.22, melodyGrid: 0.5, hatRolls: true,
+  },
+  house: {
+    label: "House", desc: "4박 댄스", bpm: 124, key: "G", swing: 0.06, humanize: 0, clap: true,
+    kick: ["x...x...x...x..."],
+    snare: ["....x.......x..."],
+    hat: ["oooooooooooooooo"],
+    open_hat: ["..x...x...x...x."],
+    progressions: [
+      [[0, "m7"], [8, "maj7"], [10, "7"], [5, "m7"]],
+      [[0, "m9"], [10, "7"], [8, "maj7"], [7, "m7"]],
+    ],
+    chordStyle: "stab", bassStyle: "offbeat", melodyDensity: 0.25, melodyGrid: 0.25,
+  },
+};
+
+const stepTime = (step, swing) => step * 0.25 + (step % 2 === 1 ? swing * 0.25 : 0);
+const humanize = (rng, amt) => amt ? rng.uniform(-amt, amt) : 0;
+const vel = (rng, base, spread = 8) => Math.max(1, Math.min(127, base + rng.randint(-spread, spread)));
+const note = (track, start, dur, pitch, v) => ({ track, start, dur, pitch, vel: v });
+
+function genDrums(cfg, rng, bars) {
+  const notes = [], kickSteps = [];
+  const kick = rng.choice(cfg.kick), kickB = rng.choice(cfg.kick);
+  const snare = rng.choice(cfg.snare), hat = rng.choice(cfg.hat), openHat = rng.choice(cfg.open_hat);
+  for (let bar = 0; bar < bars; bar++) {
+    const barStart = bar * 4;
+    const lastOfPhrase = bar % 4 === 3;
+    const lines = [[KICK, lastOfPhrase ? kickB : kick, 112], [cfg.clap ? CLAP : SNARE, snare, 105],
+                   [HAT, hat, 70], [OPEN_HAT, openHat, 72]];
+    for (const [pitch, pattern, baseVel] of lines) {
+      for (let step = 0; step < 16; step++) {
+        const ch = pattern[step];
+        if (ch === ".") continue;
+        let v = ch === "x" ? baseVel : Math.floor(baseVel * 0.45);
+        if (pitch === HAT && step % 4 === 0) v += 12;
+        const t = barStart + stepTime(step, cfg.swing) + humanize(rng, cfg.humanize);
+        notes.push(note("drums", Math.max(0, t), 0.2, pitch, vel(rng, v)));
+        if (pitch === KICK) kickSteps.push(bar * 16 + step);
+      }
+    }
+    if (cfg.hatRolls) {
+      const rolls = rng.randint(1, 2);
+      for (let r = 0; r < rolls; r++) {
+        const s = rng.choice([6, 7, 14, 15]), div = rng.choice([2, 3]);
+        for (let i = 0; i < div; i++)
+          notes.push(note("drums", barStart + s * 0.25 + i * 0.25 / div, 0.1, HAT, vel(rng, 60 + i * 10)));
+      }
+    }
+    if (lastOfPhrase && rng.random() < 0.6 && !cfg.clap) {
+      for (const s of [13, 14, 15])
+        if (rng.random() < 0.7)
+          notes.push(note("drums", barStart + stepTime(s, cfg.swing), 0.2, SNARE, vel(rng, 60 + (s - 13) * 15)));
+    }
+  }
+  kickSteps.sort((a, b) => a - b);
+  return [notes, kickSteps];
+}
+
+function genChords(cfg, rng, bars, key, prog) {
+  const notes = [];
+  for (let bar = 0; bar < bars; bar++) {
+    const [off, t] = prog[bar % prog.length];
+    const pitches = chordNotes(key, off, t), start = bar * 4;
+    if (cfg.chordStyle === "strum")
+      pitches.forEach((p, i) => notes.push(note("chords", start + i * 0.03 + humanize(rng, 0.01), 3.8, p, vel(rng, 62))));
+    else if (cfg.chordStyle === "hold")
+      pitches.forEach(p => notes.push(note("chords", start, 3.9, p, vel(rng, 64, 4))));
+    else if (cfg.chordStyle === "pad")
+      pitches.forEach(p => notes.push(note("chords", start, 4.0, p + 12, vel(rng, 55, 3))));
+    else if (cfg.chordStyle === "stab")
+      for (const s of [2, 5, 10, 13]) pitches.forEach(p => notes.push(note("chords", start + s * 0.25, 0.22, p + 12, vel(rng, 78, 5))));
+  }
+  return notes;
+}
+
+function genBass(cfg, rng, bars, key, prog, kickSteps) {
+  const notes = [];
+  if (cfg.bassStyle === "follow_kick" || cfg.bassStyle === "808") {
+    const total = bars * 16;
+    kickSteps.forEach((step, i) => {
+      const next = i + 1 < kickSteps.length ? kickSteps[i + 1] : total;
+      const bar = Math.floor(step / 16);
+      let pitch = bassNote(key, prog[bar % prog.length][0]);
+      if (cfg.bassStyle === "follow_kick" && rng.random() < 0.15) pitch += 7;
+      const maxLen = cfg.bassStyle === "808" ? 4 : 1.5;
+      const dur = Math.min((next - step) * 0.25, maxLen) * 0.92;
+      notes.push(note("bass", stepTime(step % 16, cfg.swing) + bar * 4, Math.max(dur, 0.2), pitch, vel(rng, 100, 6)));
+    });
+  } else if (cfg.bassStyle === "offbeat") {
+    for (let bar = 0; bar < bars; bar++) {
+      const pitch = bassNote(key, prog[bar % prog.length][0]);
+      for (const s of [2, 6, 10, 14]) notes.push(note("bass", bar * 4 + s * 0.25, 0.4, pitch, vel(rng, 96, 5)));
+    }
+  }
+  return notes;
+}
+
+function genMelody(cfg, rng, bars, key) {
+  const notes = [], scale = scaleNotes(key), grid = cfg.melodyGrid;
+  const stepsPerBar = Math.round(4 / grid);
+  // 2마디짜리 모티프를 만들어 반복하면서 조금씩 바꾼다
+  const motif = [];
+  let idx = Math.floor(scale.length / 2);
+  for (let s = 0; s < stepsPerBar * 2; s++) {
+    const strong = (s * grid) % 1 === 0;
+    if (rng.random() < cfg.melodyDensity * (strong ? 1.4 : 0.8)) {
+      idx = Math.max(0, Math.min(scale.length - 1, idx + rng.choice([-2, -1, -1, 0, 1, 1, 2])));
+      motif.push([s * grid, grid * rng.choice([1, 1, 2, 3]), idx]);
+    }
+  }
+  if (!motif.length) motif.push([0, 1, idx]);
+  for (let phrase = 0; phrase < bars; phrase += 2) {
+    const variation = phrase % 4 === 2;
+    for (let [t, len, i] of motif) {
+      if (variation && rng.random() < 0.3) i = Math.max(0, Math.min(scale.length - 1, i + rng.choice([-1, 1])));
+      const start = phrase * 4 + t;
+      if (start >= bars * 4) continue;
+      notes.push(note("melody", start + humanize(rng, cfg.humanize), len * 0.95, scale[i], vel(rng, 80, 10)));
+    }
+  }
+  return notes;
+}
+
+function generate({ genre, bpm, bars, key, seed, melody }) {
+  const cfg = GENRES[genre];
+  const rng = makeRng(seed);
+  const prog = rng.choice(cfg.progressions);
+  const [drums, kickSteps] = genDrums(cfg, rng, bars);
+  let notes = drums.concat(genChords(cfg, rng, bars, key, prog), genBass(cfg, rng, bars, key, prog, kickSteps));
+  if (melody) notes = notes.concat(genMelody(cfg, rng, bars, key));
+  notes.sort((a, b) => a.start - b.start);
+  return { genre, bpm, key, bars, seed, progression: prog, notes };
+}
+
+/* ============================================================ 신디사이저 (노트 → 소리) */
+const SR = 44100, TWO_PI = Math.PI * 2;
+
+function drumKit(seed) {
+  const rng = makeRng(seed * 7 + 3), noise = () => rng.uniform(-1, 1);
+  const make = (secs, fn) => { const n = Math.floor(SR * secs), out = new Float32Array(n), st = { prev: 0, phase: 0 };
+    for (let i = 0; i < n; i++) out[i] = fn(i / SR, st); return out; };
+  return {
+    [KICK]: make(0.45, (t, st) => { st.phase += TWO_PI * (48 + 110 * Math.exp(-t * 32)) / SR;
+      return Math.sin(st.phase) * Math.exp(-t * 7) + Math.exp(-t * 400) * 0.4; }),
+    [SNARE]: make(0.25, (t, st) => { const n = noise(), hp = n - st.prev * 0.6; st.prev = n;
+      return hp * Math.exp(-t * 18) * 0.6 + Math.sin(TWO_PI * 185 * t) * Math.exp(-t * 28) * 0.5; }),
+    [CLAP]: make(0.3, (t, st) => { const n = noise(), hp = n - st.prev; st.prev = n;
+      const env = t < 0.033 ? Math.exp(-(t % 0.011) * 300) : Math.exp(-(t - 0.033) * 16); return hp * env * 0.55; }),
+    [HAT]: make(0.06, (t, st) => { const n = noise(), hp = n - st.prev; st.prev = n; return hp * Math.exp(-t * 70) * 0.35; }),
+    [OPEN_HAT]: make(0.35, (t, st) => { const n = noise(), hp = n - st.prev; st.prev = n; return hp * Math.exp(-t * 11) * 0.35; }),
+  };
+}
+
+function env(t, dur, attack, decay, release) {
+  let e = (attack > 0 ? Math.min(1, t / attack) : 1) * Math.exp(-t * decay);
+  if (t > dur) e *= Math.exp(-(t - dur) / release);
+  return e;
+}
+
+function tone(kind, f, dur, v) {
+  const release = kind === "pad" ? 0.4 : kind === "808" ? 0.08 : 0.12;
+  const n = Math.floor(SR * (dur + release * 5)), out = new Float32Array(n), amp = v / 127;
+  const s = x => Math.sin(TWO_PI * x);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    let x;
+    switch (kind) {
+      case "808": phase += TWO_PI * f * (1 + 0.6 * Math.exp(-t * 45)) / SR;
+        x = Math.tanh(1.8 * Math.sin(phase)) * env(t, dur, 0.004, 0.9, release); break;
+      case "sub": x = (s(f * t) + 0.3 * s(2 * f * t)) * env(t, dur, 0.006, 2.2, release); break;
+      case "house_bass": x = (s(f * t) + 0.35 * s(2 * f * t) + 0.15 * s(3 * f * t)) * env(t, dur, 0.003, 5, release); break;
+      case "keys": x = (s(f * t) + 0.35 * s(2 * f * t) * Math.exp(-t * 3) + 0.12 * s(3 * f * t) * Math.exp(-t * 7))
+        * (1 + 0.08 * s(4.5 * t)) * env(t, dur, 0.005, 1.1, release); break;
+      case "stab": x = (s(f * t) + 0.4 * s(2 * f * t)) * env(t, dur, 0.002, 7, release); break;
+      case "pad": x = (s(f * t) + 0.6 * s(f * 1.006 * t) + 0.6 * s(f * 0.994 * t)) / 2.2 * env(t, dur, 0.25, 0.15, release); break;
+      case "bell": x = (s(f * t) + 0.5 * s(f * 2.76 * t) * Math.exp(-t * 6)) * env(t, dur, 0.002, 2.5, release); break;
+      default: x = (2 / Math.PI) * Math.asin(Math.sin(TWO_PI * f * t)) * env(t, dur, 0.01, 2.0, release);
+    }
+    out[i] = x * amp;
+  }
+  return out;
+}
+
+const VOICES = {
+  lofi: { bass: ["sub", 0.55], chords: ["keys", 0.20], melody: ["lead", 0.20] },
+  hiphop: { bass: ["sub", 0.55], chords: ["keys", 0.22], melody: ["lead", 0.20] },
+  trap: { bass: ["808", 0.60], chords: ["pad", 0.14], melody: ["bell", 0.20] },
+  house: { bass: ["house_bass", 0.45], chords: ["stab", 0.15], melody: ["lead", 0.17] },
+};
+const DRUM_GAIN = { [KICK]: 0.9, [SNARE]: 0.55, [CLAP]: 0.6, [HAT]: 0.35, [OPEN_HAT]: 0.3 };
+
+function render(beat) {
+  const spb = 60 / beat.bpm;
+  const buf = new Float32Array(Math.floor(SR * (beat.bars * 4 * spb + 2)));
+  const kit = drumKit(beat.seed), voices = VOICES[beat.genre], cache = new Map();
+  const mix = (start, src, gain) => {
+    const end = Math.min(buf.length, start + src.length);
+    for (let i = Math.max(0, start); i < end; i++) buf[i] += src[i - start] * gain;
+  };
+  for (const n of beat.notes) {
+    const start = Math.floor(n.start * spb * SR);
+    if (n.track === "drums") { mix(start, kit[n.pitch], DRUM_GAIN[n.pitch] * n.vel / 127); continue; }
+    const [kind, gain] = voices[n.track], dur = n.dur * spb;
+    const k = `${kind}|${n.pitch}|${dur.toFixed(3)}|${n.vel}`;
+    if (!cache.has(k)) cache.set(k, tone(kind, midiToFreq(n.pitch), dur, n.vel));
+    mix(start, cache.get(k), gain);
+  }
+  if (beat.genre === "lofi") {   // 로파이 질감: 고음을 깎는 필터 + 레코드판 잡음
+    const rng = makeRng(beat.seed + 1), a = 1 - Math.exp(-TWO_PI * 3800 / SR);
+    let y = 0;
+    for (let i = 0; i < buf.length; i++) {
+      y += a * (buf[i] - y);
+      let c = rng.uniform(-1, 1) * 0.004;
+      if (rng.random() < 0.0002) c += rng.uniform(-0.15, 0.15);
+      buf[i] = y + c;
+    }
+  }
+  let peak = 1e-9;
+  for (const x of buf) peak = Math.max(peak, Math.abs(x));
+  const scale = 0.9 / peak;
+  for (let i = 0; i < buf.length; i++) buf[i] = Math.tanh(buf[i] * scale * 1.1) * 0.976;
+  return buf;
+}
+
+/* ============================================================ 파일 만들기 (WAV / MIDI) */
+function toWav(samples) {
+  const data = new DataView(new ArrayBuffer(44 + samples.length * 2));
+  const str = (o, s) => [...s].forEach((c, i) => data.setUint8(o + i, c.charCodeAt(0)));
+  str(0, "RIFF"); data.setUint32(4, 36 + samples.length * 2, true); str(8, "WAVE");
+  str(12, "fmt "); data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, 1, true);
+  data.setUint32(24, SR, true); data.setUint32(28, SR * 2, true); data.setUint16(32, 2, true); data.setUint16(34, 16, true);
+  str(36, "data"); data.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) data.setInt16(44 + i * 2, Math.round(samples[i] * 32767), true);
+  return new Blob([data], { type: "audio/wav" });
+}
+
+const TPB = 480;
+const MIDI_TRACKS = {
+  drums: { ch: 9, program: null, name: "Drums" }, bass: { ch: 1, program: 38, name: "Bass" },
+  chords: { ch: 0, program: 4, name: "Keys" }, melody: { ch: 2, program: 11, name: "Melody" },
+};
+function vlq(v) { const out = [v & 0x7f]; v >>= 7; while (v) { out.unshift((v & 0x7f) | 0x80); v >>= 7; } return out; }
+const textMeta = (type, s) => { const b = [...new TextEncoder().encode(s)]; return [0, 0xff, type, ...vlq(b.length), ...b]; };
+function chunk(tag, bytes) {
+  const len = bytes.length;
+  return [...tag].map(c => c.charCodeAt(0)).concat([len >>> 24 & 255, len >>> 16 & 255, len >>> 8 & 255, len & 255], bytes);
+}
+function toMidi(beat, title) {
+  const tempo = Math.round(60000000 / beat.bpm);
+  const tracks = [chunk("MTrk", [...textMeta(0x03, title), 0, 0xff, 0x51, 3, tempo >> 16 & 255, tempo >> 8 & 255, tempo & 255,
+                                 0, 0xff, 0x58, 4, 4, 2, 24, 8, 0, 0xff, 0x2f, 0])];
+  for (const [name, info] of Object.entries(MIDI_TRACKS)) {
+    const ns = beat.notes.filter(n => n.track === name);
+    if (!ns.length) continue;
+    const ev = [];
+    for (const n of ns) {
+      const on = Math.round(n.start * TPB), off = Math.max(on + 1, Math.round((n.start + n.dur) * TPB));
+      ev.push([on, 1, [0x90 | info.ch, n.pitch, n.vel]], [off, 0, [0x80 | info.ch, n.pitch, 0]]);
+    }
+    ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let bytes = textMeta(0x03, info.name), last = 0;
+    if (info.program !== null) bytes.push(0, 0xc0 | info.ch, info.program);
+    for (const [tick, , msg] of ev) { bytes.push(...vlq(tick - last), ...msg); last = tick; }
+    bytes.push(0, 0xff, 0x2f, 0);
+    tracks.push(chunk("MTrk", bytes));
+  }
+  const header = chunk("MThd", [0, 1, 0, tracks.length, TPB >> 8, TPB & 255]);
+  return new Blob([new Uint8Array(header.concat(...tracks))], { type: "audio/midi" });
+}
+
+/* ============================================================ 화면 */
+const $ = id => document.getElementById(id);
+let current = { genre: "lofi" }, beat = null, samples = null, audioCtx = null, source = null, startedAt = 0, raf = 0;
+
+function buildGenreButtons() {
+  for (const [id, g] of Object.entries(GENRES)) {
+    const b = document.createElement("button");
+    b.innerHTML = `<b>${g.label}</b><span>${g.desc} · ${g.bpm}</span>`;
+    b.setAttribute("aria-pressed", id === current.genre);
+    b.onclick = () => {
+      current.genre = id;
+      document.querySelectorAll("#genres button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      $("bpm").value = g.bpm;
+      $("key").value = NOTE_NAMES.indexOf(g.key);
+    };
+    $("genres").appendChild(b);
+  }
+  NOTE_NAMES.forEach((n, i) => $("key").add(new Option(`${n} 마이너`, i)));
+  $("bpm").value = GENRES.lofi.bpm;
+  $("key").value = NOTE_NAMES.indexOf(GENRES.lofi.key);
+}
+
+function stop() {
+  if (source) { source.onended = null; source.stop(); source = null; }
+  cancelAnimationFrame(raf);
+  $("play").textContent = "▶ 재생";
+  drawRoll(-1);
+}
+
+function play() {
+  if (source) return stop();
+  audioCtx = audioCtx || new AudioContext({ sampleRate: SR });
+  const ab = audioCtx.createBuffer(1, samples.length, SR);
+  ab.copyToChannel(samples, 0);
+  source = audioCtx.createBufferSource();
+  source.buffer = ab;
+  source.connect(audioCtx.destination);
+  source.onended = stop;
+  source.start();
+  startedAt = audioCtx.currentTime;
+  $("play").textContent = "■ 정지";
+  const tick = () => { drawRoll((audioCtx.currentTime - startedAt) * beat.bpm / 60); raf = requestAnimationFrame(tick); };
+  tick();
+}
+
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function drawRoll(playhead) {
+  if (!beat) return;
+  const c = $("roll"), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== w * dpr) { c.width = w * dpr; c.height = h * dpr; }
+  const g = c.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const beats = beat.bars * 4, x = b => b / beats * w;
+  // 위쪽 30%: 드럼 3줄, 아래쪽: 음정 있는 악기
+  const drumRows = { [KICK]: 2, [SNARE]: 1, [CLAP]: 1, [HAT]: 0, [OPEN_HAT]: 0 };
+  const drumColor = { 0: cssVar("--hat"), 1: cssVar("--snare"), 2: cssVar("--kick") };
+  const drumH = h * 0.3, rowH = drumH / 3;
+  g.strokeStyle = cssVar("--line");
+  for (let b = 0; b <= beat.bars; b++) { g.beginPath(); g.moveTo(x(b * 4) + 0.5, 0); g.lineTo(x(b * 4) + 0.5, h); g.stroke(); }
+  const pitched = beat.notes.filter(n => n.track !== "drums");
+  const lo = Math.min(...pitched.map(n => n.pitch)) - 1, hi = Math.max(...pitched.map(n => n.pitch)) + 1;
+  const py = p => drumH + 8 + (hi - p) / (hi - lo) * (h - drumH - 16);
+  const colors = { bass: cssVar("--bass"), chords: cssVar("--chords"), melody: cssVar("--melody") };
+  for (const n of beat.notes) {
+    if (n.track === "drums") {
+      const row = drumRows[n.pitch];
+      g.fillStyle = drumColor[row];
+      g.globalAlpha = 0.35 + 0.65 * n.vel / 127;
+      g.fillRect(x(n.start), row * rowH + 3, Math.max(2, x(0.2) - 1), rowH - 6);
+    } else {
+      g.fillStyle = colors[n.track];
+      g.globalAlpha = 0.85;
+      g.fillRect(x(n.start), py(n.pitch) - 2, Math.max(2, x(n.dur)), 4);
+    }
+  }
+  g.globalAlpha = 1;
+  if (playhead >= 0) { g.fillStyle = cssVar("--ink"); g.fillRect(x(playhead), 0, 2, h); }
+}
+
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function onGenerate() {
+  stop();
+  const clamp = (v, lo, hi, d) => Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : d;
+  const g = GENRES[current.genre];
+  const seedIn = parseInt($("seed").value, 10);
+  const opts = {
+    genre: current.genre,
+    bpm: clamp(parseInt($("bpm").value, 10), 40, 220, g.bpm),
+    bars: clamp(parseInt($("bars").value, 10), 1, 64, 8),
+    key: parseInt($("key").value, 10),
+    seed: Number.isFinite(seedIn) && seedIn > 0 ? seedIn : 1 + Math.floor(Math.random() * 999999),
+    melody: $("melody").checked,
+  };
+  $("bpm").value = opts.bpm; $("bars").value = opts.bars;
+  $("status").textContent = "소리를 만드는 중…";
+  $("generate").disabled = true;
+  setTimeout(() => {
+    const t0 = performance.now();
+    beat = generate(opts);
+    samples = render(beat);
+    const chords = beat.progression.map(([o, t]) => chordLabel(beat.key, o, t)).join(" – ");
+    $("info").innerHTML = `<div class="chords">${chords}</div>
+      <div class="meta">${GENRES[beat.genre].label} · ${beat.bpm} BPM · ${NOTE_NAMES[beat.key]} 마이너 · ${beat.bars}마디 ·
+      ${(samples.length / SR).toFixed(1)}초 · seed ${beat.seed}</div>`;
+    $("result").hidden = false;
+    ["play", "wav", "mid"].forEach(id => $(id).disabled = false);
+    $("generate").disabled = false;
+    $("status").textContent = `완성 (${Math.round(performance.now() - t0)}ms). 같은 비트를 다시 만들려면 seed ${beat.seed}를 입력하세요.`;
+    drawRoll(-1);
+  }, 20);
+}
+
+buildGenreButtons();
+$("generate").onclick = onGenerate;
+$("play").onclick = play;
+$("wav").onclick = () => download(toWav(samples), `${beat.genre}_${beat.seed}.wav`);
+$("mid").onclick = () => download(toMidi(beat, `${beat.genre}_${beat.seed}`), `${beat.genre}_${beat.seed}.mid`);
+window.addEventListener("resize", () => drawRoll(-1));
+</script>
+</body>
+</html>

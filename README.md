@@ -1,1 +1,86 @@
-# my-project
+# my-project: beatmaker
+
+장비와 유료 서비스 없이 비트를 만드는 규칙 기반 생성기입니다.
+드럼, 베이스, 코드, 멜로디가 들어간 비트를 만들어 **WAV(.wav)** 와 **MIDI(.mid)** 파일로 저장합니다.
+
+- AI API를 쓰지 않으므로 실행 비용이 없습니다.
+- 같은 `seed` 값을 주면 같은 비트가 다시 나옵니다.
+- 두 가지 버전이 있습니다. 같은 규칙으로 동작합니다.
+  - **웹 버전** (`index.html`): 설치 없이 브라우저에서 바로 사용
+  - **Python 버전** (`beatmaker/`): 명령줄에서 사용
+
+## 웹 버전 (설치 필요 없음)
+
+`index.html` 파일을 더블클릭해서 브라우저(Chrome, Edge 등)로 엽니다.
+
+1. 장르(Lo-fi, Hip-hop, Trap, House)를 고릅니다.
+2. 필요하면 BPM, 마디 수, 키, seed를 바꿉니다.
+3. **비트 만들기**를 누르고 **▶ 재생**으로 들어 봅니다.
+4. 마음에 들면 **WAV 저장** 또는 **MIDI 저장**을 누릅니다.
+
+화면 아래에는 어떤 악기가 언제 연주되는지 색깔 막대로 보여 줍니다.
+
+## Python 버전
+
+> 아직 실제 Python 환경에서 실행해 보지 않은 버전입니다. 웹 버전과 같은 규칙으로 작성했습니다.
+
+Python 3.8 이상만 있으면 되고, 외부 라이브러리 설치는 필요 없습니다.
+
+### 실행 방법
+
+```bash
+python -m beatmaker --genre lofi
+```
+
+`output/` 폴더에 `lofi_123456.mid`, `lofi_123456.wav` 같은 파일이 생깁니다.
+WAV는 바로 재생하면 되고, MIDI는 FL Studio, Ableton, GarageBand 같은 DAW에서 불러와 악기를 바꾸거나 수정할 수 있습니다.
+
+#### 예시
+
+```bash
+python -m beatmaker --genre trap --bars 16
+python -m beatmaker --genre hiphop --bpm 88 --key Eb
+python -m beatmaker --genre house --seed 4242 --name my_house
+python -m beatmaker --genre lofi --no-melody
+```
+
+### 옵션
+
+| 옵션 | 설명 | 기본값 |
+|---|---|---|
+| `--genre` | `lofi`, `hiphop`, `trap`, `house` | `lofi` |
+| `--bpm` | 빠르기 (40~220) | 장르별 기본값 |
+| `--bars` | 마디 수 (1~64) | 8 |
+| `--key` | 근음, 예: `A`, `F#`, `Bb` (마이너 키로 생성) | 장르별 기본값 |
+| `--seed` | 같은 값을 주면 같은 비트 | 무작위 |
+| `--out` | 저장 폴더 | `output` |
+| `--name` | 파일 이름 | `장르_seed` |
+| `--no-melody` | 멜로디 없이 반주만 | |
+| `--no-wav` | MIDI만 만들기 (빠름) | |
+
+## 장르별 특징
+
+| 장르 | BPM | 특징 |
+|---|---|---|
+| lofi | 82 | 스윙, 흩뿌리듯 누르는 9th 코드, 고음을 깎는 필터와 레코드판 잡음 |
+| hiphop | 90 | 붐뱁 킥·스네어, 7th 코드, 킥을 따라가는 베이스 |
+| trap | 140 | 하프타임 스네어, 하이햇 롤, 808 베이스, 패드와 벨 멜로디 |
+| house | 124 | 4박 킥, 엇박 오픈햇과 베이스, 짧게 끊는 코드 |
+
+## 구조
+
+```
+index.html       # 웹 버전 (아래 Python 모듈들의 기능을 파일 하나에 담음)
+beatmaker/
+├── theory.py    # 조성, 코드, 스케일 계산
+├── patterns.py  # 장르 규칙으로 노트 목록 생성 (드럼, 코드, 베이스, 멜로디)
+├── midi.py      # 노트 목록 → .mid 파일
+├── synth.py     # 노트 목록 → .wav 파일 (사인파와 노이즈로 직접 합성)
+└── __main__.py  # 명령줄 실행
+```
+
+## 다음 단계 아이디어
+
+- 장르 추가: `patterns.py`의 `GENRES`에 항목을 하나 추가하면 됩니다.
+- Claude API를 붙여서 "비 오는 밤 같은 로파이"처럼 자연어로 요청하는 에이전트로 확장
+- 실제 악기 샘플(WAV)을 불러와 더 현실적인 소리로 렌더링
